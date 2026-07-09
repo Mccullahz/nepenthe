@@ -29,12 +29,46 @@ your notes rendered as a navigable **3D link graph** inside the CLI.
 
 ## Install
 
+Requires Go 1.26+ and a truecolor-capable terminal (iTerm2, Ghostty,
+WezTerm, Kitty, Alacritty; macOS Terminal.app only does 256 colors).
+
+**Try it without installing:**
+
 ```sh
-go build -o nepenthe .
-./nepenthe examples/vault   # try the demo vault
+make run                    # builds ./nepenthe and opens the demo vault
+# or: go build -o nepenthe . && ./nepenthe examples/vault
 ```
 
-Requires Go 1.26+ and a truecolor-capable terminal.
+**Install it as a command** so `nepenthe` runs from anywhere:
+
+```sh
+make install                # builds and copies to ~/.local/bin/nepenthe
+```
+
+If `~/.local/bin` isn't on your `PATH`, add it (zsh is the macOS default):
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
+
+Prefer a system location? `make install PREFIX=/usr/local` (may need
+`sudo`). Remove it with `make uninstall`. Cross-compile release binaries
+for macOS/Linux (arm64 + amd64) into `./dist` with `make dist`.
+
+> Note: `go install .` also works but names the binary `nepenthe-cli`
+> (after the module path), so use `make install` / `go build -o nepenthe`
+> to get a plain `nepenthe` command.
+
+**Point it at your knowledge base** so the bare command is
+cwd-independent — otherwise `nepenthe` with no argument opens `~/nepenthe`:
+
+```sh
+export NEPENTHE_VAULT="$HOME/notes"          # in your shell rc, or…
+# …set it in ~/.config/nepenthe/init.lua:  nepenthe.opt.vault_dir = "~/notes"
+```
+
+Now `nepenthe` opens your vault from anywhere, and `nepenthe ~/work/wiki`
+opens a specific one when you want it.
 
 ## Usage
 
