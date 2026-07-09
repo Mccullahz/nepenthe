@@ -1,0 +1,29 @@
+# full user journey through nepenthe (single keys, typed like a human)
+# let the layout settle, then fuzzy-search a note and fly to it
+2.0 /
+0.5 graph
+0.8 \r
+# toggle focus mode off and back on
+1.0 f
+0.6 f
+# cycle selection (auto-centers), then open the selected note
+0.6 n
+0.6 \r
+# read mode: esc does NOT exit (shows a ":q to close" hint)
+1.5 \e
+# follow a link (tab to cycle, enter to follow) -> now two notes deep
+0.8 \x09
+0.5 \r
+# esc steps back one note in the trail (never reaches the graph)
+1.2 \e
+# close the note with :q (typed byte-by-byte), then again to reach graph
+1.0 :
+0.2 q
+0.2 \r
+1.0 :
+0.2 q
+0.2 \r
+# quit the app from the graph via the command line
+1.0 :
+0.2 q
+0.2 \r

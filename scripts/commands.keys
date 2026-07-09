@@ -1,0 +1,26 @@
+# command-mode journey: :new (opens read mode), then base switching
+# let the layout settle
+2.0 n
+0.3 n
+0.3 \r
+# viewing a note; close it back to the graph with :q
+1.5 :
+0.2 q
+0.2 \r
+# :new scratch/probe -> creates the note and opens it in read mode
+0.8 :
+0.2 new scratch/probe
+0.3 \r
+# close the new note back to the graph
+1.0 :
+0.2 q
+0.2 \r
+# cycle base with 'b' twice, then :base daily, then quit the app
+1.2 b
+0.8 b
+0.8 :
+0.2 base daily
+0.2 \r
+1.0 :
+0.2 q
+0.2 \r

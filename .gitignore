@@ -1,0 +1,4 @@
+/nepenthe
+/dist/
+*.test
+*.out
