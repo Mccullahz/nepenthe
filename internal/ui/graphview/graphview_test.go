@@ -325,3 +325,41 @@ func TestToggleFocus(t *testing.T) {
 		t.Errorf("focus should toggle on 'f'")
 	}
 }
+
+func TestSearchTabCyclesMatches(t *testing.T) {
+	m := newModel(80, 24) // sampleGraph: Alpha, Beta, Gamma
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	// Empty query -> all three entries match; selection starts at 0.
+	if len(m.matches) < 3 {
+		t.Fatalf("expected all entries to match empty query, got %d", len(m.matches))
+	}
+	if m.matchSel != 0 {
+		t.Fatalf("initial matchSel = %d, want 0", m.matchSel)
+	}
+	// Tab advances the highlight; wraps around.
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.matchSel != 1 {
+		t.Errorf("after Tab matchSel = %d, want 1", m.matchSel)
+	}
+	// Shift+Tab goes back.
+	m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.matchSel != 0 {
+		t.Errorf("after Shift+Tab matchSel = %d, want 0", m.matchSel)
+	}
+	// Wrap backward from 0 to last.
+	m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.matchSel != len(m.matches)-1 {
+		t.Errorf("wrap-back matchSel = %d, want %d", m.matchSel, len(m.matches)-1)
+	}
+	// Enter selects the highlighted entry (still in search until then).
+	if !m.searching {
+		t.Fatal("should still be searching before enter")
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.searching {
+		t.Error("enter should close search")
+	}
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+}

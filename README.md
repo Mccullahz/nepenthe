@@ -105,6 +105,10 @@ Vault resolution order: positional arg / `-vault` flag → `$NEPENTHE_VAULT`
 | note | `i` or `a` | edit in `$EDITOR` |
 | note | `:q` | close the note |
 
+In the `/` search overlay: **Tab** / **Shift+Tab** (or `↓`/`↑`) cycle
+results, **Enter** selects (fly to a note / scope to a folder), **Esc**
+cancels.
+
 ### Commands
 
 `:new <path>` · `:open <path>` · `:delete <path>` · `:base [name]` ·

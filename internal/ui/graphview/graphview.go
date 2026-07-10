@@ -364,12 +364,12 @@ func (m *Model) handleSearchKey(key tea.KeyMsg) (ui.View, tea.Cmd) {
 		}
 		m.closeSearch()
 		return m, nil
-	case "down", "ctrl+n":
+	case "tab", "down", "ctrl+n":
 		if n := len(m.matches); n > 0 {
 			m.matchSel = (m.matchSel + 1) % n
 		}
 		return m, nil
-	case "up", "ctrl+p":
+	case "shift+tab", "up", "ctrl+p":
 		if n := len(m.matches); n > 0 {
 			m.matchSel = (m.matchSel - 1 + n) % n
 		}
