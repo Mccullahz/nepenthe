@@ -15,6 +15,9 @@ type Params struct {
 	Damping      float64 // velocity retained each step (0..1)
 	TimeStep     float64 // integration step
 	MaxSpeed     float64 // per-node velocity clamp (stability)
+	// Cluster groups nodes by base into separate regions of space, each
+	// base pulled toward its own spread-out center instead of the origin.
+	Cluster bool
 }
 
 func (p Params) normalized() Params {
@@ -43,6 +46,21 @@ func (p Params) normalized() Params {
 // replaced by deterministic random sampling to keep each Step cheap.
 const sampleThreshold = 1500
 
+// clusterPull is the gravity strength toward a base's cluster center when
+// clustering is on (stronger than the default origin gravity so clusters
+// stay tight and separated).
+const clusterPull = 0.09
+
+// clusterRadius estimates the resting radius of a base's cluster of k nodes,
+// used both to seed members and to space base centers so clusters don't
+// overlap.
+func clusterRadius(linkDist float64, k int) float64 {
+	if k < 1 {
+		k = 1
+	}
+	return linkDist * math.Cbrt(float64(k)) * 1.3
+}
+
 // Layout is a force-directed 3D placement of graph nodes. Positions are
 // deterministic for a given set of node paths and edges: initial placement
 // is a Fibonacci sphere jittered by a hash of each node's path, so a rescan
@@ -54,15 +72,22 @@ type Layout struct {
 	paths  []string
 	params Params
 
+	// baseCenter[i] is the anchor each node's gravity pulls toward — its
+	// base's cluster center when clustering, else the origin (zero).
+	baseCenter []Vec3
+	clustering bool
+
 	energy float64 // kinetic energy after the most recent Step
 	step   int     // total iterations advanced (seeds sampling PRNG)
 }
 
 // NewLayout builds a layout for the given node paths and edges (edges are
-// index pairs into paths). prev, if non-nil, maps a node path to a position
-// to reuse, so nodes surviving a rescan keep their place; new nodes are
-// seeded near a linked neighbor when possible, else on the jittered sphere.
-func NewLayout(paths []string, edges [][2]int, params Params, prev map[string]Vec3) *Layout {
+// index pairs into paths). bases[i] is node i's base (same length as paths;
+// nil or a mismatched length means a single unclustered base). prev, if
+// non-nil, maps a node path to a position to reuse, so nodes surviving a
+// rescan keep their place; new nodes are seeded near their base center (or a
+// linked neighbor) when possible, else on the jittered sphere.
+func NewLayout(paths, bases []string, edges [][2]int, params Params, prev map[string]Vec3) *Layout {
 	n := len(paths)
 	l := &Layout{
 		pos:    make([]Vec3, n),
@@ -71,7 +96,56 @@ func NewLayout(paths []string, edges [][2]int, params Params, prev map[string]Ve
 		paths:  paths,
 		params: params.normalized(),
 	}
-	radius := l.params.LinkDistance * math.Cbrt(float64(n)+1) * 1.6
+	l.baseCenter = make([]Vec3, n) // zero (origin) unless clustering assigns
+
+	// Assign each base a stable ordinal and count its members. Bases appear
+	// in first-seen order (deterministic given the caller's node order).
+	if len(bases) != n {
+		bases = make([]string, n) // one empty base -> no clustering
+	}
+	baseIdx := make([]int, n)
+	seen := make(map[string]int)
+	var order []string
+	for i, b := range bases {
+		bi, ok := seen[b]
+		if !ok {
+			bi = len(order)
+			seen[b] = bi
+			order = append(order, b)
+		}
+		baseIdx[i] = bi
+	}
+	nb := len(order)
+	counts := make([]int, nb)
+	local := make([]int, n) // index of node within its base
+	for i := range paths {
+		local[i] = counts[baseIdx[i]]
+		counts[baseIdx[i]]++
+	}
+	l.clustering = params.Cluster && nb > 1
+
+	// Spread the base centers on a sphere sized so clusters don't overlap.
+	centers := make([]Vec3, nb) // origin when not clustering
+	if l.clustering {
+		maxCR := 0.0
+		for bi := 0; bi < nb; bi++ {
+			if cr := clusterRadius(l.params.LinkDistance, counts[bi]); cr > maxCR {
+				maxCR = cr
+			}
+		}
+		// Desired center-to-center spacing, then the sphere radius that
+		// yields it for nb points (nearest-neighbor spacing ~ 2R/sqrt(nb)).
+		spacing := 2*maxCR + l.params.LinkDistance*3
+		sep := spacing * math.Sqrt(float64(nb)) / 2
+		for bi := 0; bi < nb; bi++ {
+			centers[bi] = fibonacciSphere(bi, nb, sep)
+		}
+	}
+	for i := range paths {
+		l.baseCenter[i] = centers[baseIdx[i]]
+	}
+
+	globalRadius := l.params.LinkDistance * math.Cbrt(float64(n)+1) * 1.6
 	placed := make([]bool, n)
 	for i, p := range paths {
 		if prev != nil {
@@ -81,7 +155,15 @@ func NewLayout(paths []string, edges [][2]int, params Params, prev map[string]Ve
 				continue
 			}
 		}
-		l.pos[i] = fibonacciSphere(i, n, radius).Add(hashJitter(p, l.params.LinkDistance))
+		if l.clustering {
+			// Seed on a small sphere around the node's base center.
+			cr := clusterRadius(l.params.LinkDistance, counts[baseIdx[i]])
+			l.pos[i] = l.baseCenter[i].
+				Add(fibonacciSphere(local[i], counts[baseIdx[i]], cr)).
+				Add(hashJitter(p, l.params.LinkDistance))
+		} else {
+			l.pos[i] = fibonacciSphere(i, n, globalRadius).Add(hashJitter(p, l.params.LinkDistance))
+		}
 	}
 	// Pull brand-new nodes toward an already-placed neighbor so they enter
 	// the layout near where they belong instead of flinging it apart.
@@ -151,9 +233,16 @@ func (l *Layout) Step(iters int) float64 {
 			force[a] = force[a].Add(dir.Scale(f))
 			force[b] = force[b].Sub(dir.Scale(f))
 		}
-		// Mild centering gravity toward the origin.
+		// Gravity pulls each node toward its anchor: its base's cluster
+		// center when clustering (which both groups and keeps bases apart),
+		// else the origin. The cluster pull is stronger so clusters stay
+		// tight and distinct against inter-cluster repulsion.
+		pull := p.Gravity
+		if l.clustering {
+			pull = clusterPull
+		}
 		for i := range l.pos {
-			force[i] = force[i].Sub(l.pos[i].Scale(p.Gravity))
+			force[i] = force[i].Sub(l.pos[i].Sub(l.baseCenter[i]).Scale(pull))
 		}
 		// Integrate with damping and a speed clamp.
 		var energy float64

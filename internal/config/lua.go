@@ -204,6 +204,7 @@ func (env *luaEnv) getOption(L *lua.LState, key string) lua.LValue {
 		t.RawSetString("show_labels", lua.LBool(env.cfg.Graph.ShowLabels))
 		t.RawSetString("fov", lua.LNumber(env.cfg.Graph.FOV))
 		t.RawSetString("focus", lua.LBool(env.cfg.Graph.Focus))
+		t.RawSetString("cluster", lua.LBool(env.cfg.Graph.Cluster))
 		return t
 	default:
 		return lua.LNil
@@ -295,6 +296,13 @@ func (env *luaEnv) applyGraph(tbl *lua.LTable) error {
 				return
 			}
 			env.cfg.Graph.Focus = bool(b)
+		case "cluster":
+			b, ok := v.(lua.LBool)
+			if !ok {
+				errs = append(errs, env.errorf(key, "expected boolean, got %s", v.Type()))
+				return
+			}
+			env.cfg.Graph.Cluster = bool(b)
 		case "fov":
 			n, ok := v.(lua.LNumber)
 			if !ok {

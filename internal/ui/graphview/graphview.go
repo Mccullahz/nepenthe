@@ -91,8 +91,10 @@ func New(cfg *config.Config, g *vault.Graph) *Model {
 // does not scatter surviving nodes.
 func (m *Model) rebuild(prev map[string]graph3d.Vec3) {
 	paths := make([]string, len(m.g.Nodes))
+	bases := make([]string, len(m.g.Nodes))
 	for i, n := range m.g.Nodes {
 		paths[i] = n.Path
+		bases[i] = n.Base
 	}
 	edges := make([][2]int, 0, len(m.g.Edges))
 	for _, e := range m.g.Edges {
@@ -101,8 +103,9 @@ func (m *Model) rebuild(prev map[string]graph3d.Vec3) {
 	params := graph3d.Params{
 		LinkDistance: m.cfg.Graph.LinkDistance,
 		Repulsion:    m.cfg.Graph.Repulsion,
+		Cluster:      m.cfg.Graph.Cluster,
 	}
-	m.layout = graph3d.NewLayout(paths, edges, params, prev)
+	m.layout = graph3d.NewLayout(paths, bases, edges, params, prev)
 	if m.cam == nil {
 		m.cam = graph3d.NewCamera(m.cfg.Graph.FOV)
 	}

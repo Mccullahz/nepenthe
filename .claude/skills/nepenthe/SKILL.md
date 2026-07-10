@@ -74,6 +74,11 @@ create a base, make a folder at the vault root and put notes in it. Rules:
 To split one big vault into several: move notes into folders. To keep it as
 one graph: leave them loose at the root.
 
+In the 3D view, notes **cluster by base** — each base gets its own region of
+space so it reads as a separate constellation, with clear gaps between
+bases. This is on by default; set `graph.cluster = false` (Lua) for a single
+uniform blob.
+
 ---
 
 ## 2. Navigation
@@ -186,6 +191,7 @@ nepenthe.opt.graph = {
   show_labels   = true,
   fov           = 70,
   focus         = true,   -- start in focus mode (toggle live with 'f')
+  cluster       = true,   -- group notes by base into separated regions
 }
 
 -- style (b): one setup call (mix freely with the above)

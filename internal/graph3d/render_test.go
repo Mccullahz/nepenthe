@@ -36,7 +36,7 @@ func TestBufferExactDimensions(t *testing.T) {
 func TestRenderDimensions(t *testing.T) {
 	paths := []string{"alpha.md", "beta.md", "gamma.md"}
 	edges := [][2]int{{0, 1}, {1, 2}}
-	l := NewLayout(paths, edges, Params{}, nil)
+	l := NewLayout(paths, nil, edges, Params{}, nil)
 	l.Step(100)
 	cam := NewCamera(70)
 	cam.Frame(l.Centroid(), l.BoundingRadius(), 60, 24)
@@ -68,7 +68,7 @@ func TestRenderDimensions(t *testing.T) {
 
 func TestRenderWideRuneLabel(t *testing.T) {
 	// A CJK (double-width) title must not break line widths.
-	l := NewLayout([]string{"n.md"}, nil, Params{}, nil)
+	l := NewLayout([]string{"n.md"}, nil, nil, Params{}, nil)
 	cam := NewCamera(70)
 	cam.Frame(Vec3{}, 1, 40, 12)
 	cam.Dist = cam.TargetDist

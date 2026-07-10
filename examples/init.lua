@@ -56,6 +56,8 @@ nepenthe.opt.graph = {
 	fov = 70, -- camera field of view, in degrees
 	focus = true, -- start in focus mode: dim everything except the
 	-- selected node and its direct links (toggle with 'f')
+	cluster = true, -- group notes by base into separated regions of the
+	-- 3D space (each base its own constellation)
 }
 
 -- Read a value back:
@@ -82,6 +84,7 @@ nepenthe.setup({
 		show_labels = true,
 		fov = 70,
 		focus = true,
+		cluster = true,
 	},
 })
 

@@ -29,6 +29,9 @@ type GraphConfig struct {
 	// Focus dims everything except the selected node and its direct
 	// neighbors, and hides non-incident edges, to cut the "hairball".
 	Focus bool
+	// Cluster groups notes by base into separated regions of the 3D space
+	// so each knowledge base reads as its own constellation.
+	Cluster bool
 }
 
 // Config is the full runtime configuration.
@@ -61,6 +64,7 @@ func Default() *Config {
 			ShowLabels:   true,
 			FOV:          70,
 			Focus:        true,
+			Cluster:      true,
 		},
 		Keymap: keymap.Default(),
 	}

@@ -24,7 +24,9 @@ your notes rendered as a navigable **3D link graph** inside the CLI.
   and relative markdown links become graph edges.
 - **One big base, or many** — the whole vault is one knowledge base by
   default; every top-level folder is also addressable as its own base
-  (`b` to cycle, `:base <name>`).
+  (`b` to cycle, `:base <name>`). In the 3D view notes **cluster by base**
+  into separated regions, so each base reads as its own constellation
+  (turn it off with `graph.cluster = false`).
 - **Configured like neovim** — `~/.config/nepenthe/init.lua` (plus an
   optional per-vault `.nepenthe/init.lua`), or live from the UI with
   `:set` and `:bind`.
