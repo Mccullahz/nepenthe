@@ -96,13 +96,26 @@ func (a *App) contentHeight() int {
 	return h
 }
 
-func (a *App) refreshGraph() {
-	if gv, ok := a.stack[0].(*graphview.Model); ok {
-		gv.SetGraph(a.vault.Graph(a.base))
-		gv.SetBases(baseNames(a.vault))
-		gv.SetActiveBase(a.base)
-		gv.SetSearchIndex(buildSearchIndex(a.vault))
+// refreshGraph rebuilds the graph after a vault change, preserving node
+// positions so surviving nodes don't jump.
+func (a *App) refreshGraph() { a.refreshGraphMode(true) }
+
+// refreshGraphMode rebuilds the graph. preserve keeps existing node
+// positions (rescans, reveals); when false the graph is laid out fresh
+// (base switches, so the new base settles cleanly around its centers).
+func (a *App) refreshGraphMode(preserve bool) {
+	gv, ok := a.stack[0].(*graphview.Model)
+	if !ok {
+		return
 	}
+	if preserve {
+		gv.SetGraph(a.vault.Graph(a.base))
+	} else {
+		gv.SetGraphReseed(a.vault.Graph(a.base))
+	}
+	gv.SetBases(baseNames(a.vault))
+	gv.SetActiveBase(a.base)
+	gv.SetSearchIndex(buildSearchIndex(a.vault))
 }
 
 // buildSearchIndex assembles the whole-vault "go to" index: every note (by
@@ -167,6 +180,14 @@ func (a *App) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return a.handleKey(m)
 
+	case ui.GraphTickMsg:
+		// Always drive the graph's animation loop on the graph (stack[0]),
+		// never the top view — otherwise the tick is eaten while a note or
+		// editor is open and the graph's animation deadlocks.
+		next, cmd := a.stack[0].Update(m)
+		a.stack[0] = next
+		return a, cmd
+
 	case ui.OpenNoteMsg:
 		nv := noteview.New(a.cfg, a.vault, m.Path)
 		nv.SetSize(a.width, a.contentHeight())
@@ -226,12 +247,13 @@ func (a *App) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.SwitchBaseMsg:
 		a.base = m.Base
-		a.refreshGraph()
+		a.refreshGraphMode(false) // reseed so the new base lays out cleanly
 		name := m.Base
 		if name == "" {
 			name = "all notes"
 		}
-		return a, a.setStatus("base: " + name)
+		// Swivel the camera to frame the newly shown base.
+		return a, tea.Batch(emit(ui.ReframeGraphMsg{}), a.setStatus("base: "+name))
 
 	case clearStatusMsg:
 		if m.seq == a.statusSeq {

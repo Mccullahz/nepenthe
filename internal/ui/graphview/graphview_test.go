@@ -60,7 +60,7 @@ func TestViewDimensionsMatchSize(t *testing.T) {
 		m := newModel(size[0], size[1])
 		// Let the layout run a little so nodes have real positions.
 		for i := 0; i < 30; i++ {
-			m.Update(tickMsg{})
+			m.Update(ui.GraphTickMsg{})
 		}
 		out := m.View()
 		lines := strings.Split(out, "\n")
@@ -173,7 +173,7 @@ func TestSwitchBaseCycles(t *testing.T) {
 func TestSelectionReachesEveryNode(t *testing.T) {
 	m := newModel(80, 24)
 	for i := 0; i < 30; i++ {
-		m.Update(tickMsg{})
+		m.Update(ui.GraphTickMsg{})
 	}
 	seen := map[int]bool{}
 	km := m.cfg.Keymap
@@ -228,7 +228,7 @@ func TestFuzzyScore(t *testing.T) {
 func TestSearchRanksAndFlies(t *testing.T) {
 	m := newModel(80, 24)
 	for i := 0; i < 30; i++ {
-		m.Update(tickMsg{})
+		m.Update(ui.GraphTickMsg{})
 	}
 	// Open search and type "gam" -> should match Gamma (node 2).
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
@@ -302,7 +302,7 @@ func TestSearchSpansSuppliedIndex(t *testing.T) {
 func TestSearchOverlayKeepsDimensions(t *testing.T) {
 	m := newModel(60, 16)
 	for i := 0; i < 20; i++ {
-		m.Update(tickMsg{})
+		m.Update(ui.GraphTickMsg{})
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})

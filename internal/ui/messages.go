@@ -35,6 +35,17 @@ type SwitchBaseMsg struct{ Base string }
 // camera to it. Emitted by fuzzy search, which spans the whole vault.
 type RevealNoteMsg struct{ Path string }
 
+// GraphTickMsg drives the graph view's animation loop. The shell always
+// routes it to the graph (stack[0]), never the top view, so the graph's
+// tick bookkeeping stays correct even while a note or editor is on top —
+// otherwise the loop deadlocks and the camera freezes.
+type GraphTickMsg struct{}
+
+// ReframeGraphMsg tells the graph view to animate the camera to frame the
+// current graph. Emitted after a base switch so the camera swivels to the
+// newly shown base (the same motion as flying to a fuzzy-search result).
+type ReframeGraphMsg struct{}
+
 // SearchEntry is one row in the graph's fuzzy "go to" index: a note
 // (IsFolder false) reachable by title or path, or a folder that can be
 // scoped to as a base. The shell supplies the whole-vault index so search

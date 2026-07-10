@@ -99,7 +99,7 @@ Vault resolution order: positional arg / `-vault` flag → `$NEPENTHE_VAULT`
 | graph | `enter` | open selected note |
 | graph | `0` | reset camera |
 | graph | `L` | toggle labels |
-| graph | `b` | cycle knowledge base |
+| graph | `b` | cycle knowledge base (camera swivels to it) |
 | note | `j k ctrl+d ctrl+u g G` | scroll |
 | note | `tab` / `shift+tab` | cycle links |
 | note | `enter` | follow selected link |

@@ -106,7 +106,7 @@ active base, and matches both notes (by title or path) and folders:
   first if the note lives outside the current base.
 - Selecting a **folder** scopes the graph to it (same as `:base <folder>`).
 
-**Switching bases:**
+**Switching bases** (the camera swivels to frame the newly shown base):
 - `b` cycles the top-level bases; the bottom bar shows the active one.
 - `:base <name>` jumps directly. It accepts **any folder path at any
   depth** — `:base projects/web` scopes to that nested folder, not only the

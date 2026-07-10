@@ -28,9 +28,6 @@ const frameInterval = time.Second / 30
 // settled and animation may stop.
 const energyThreshold = 0.02
 
-// tickMsg drives the layout/camera animation loop.
-type tickMsg struct{}
-
 // Model is the 3D graph view.
 type Model struct {
 	cfg *config.Config
@@ -145,6 +142,15 @@ func (m *Model) SetGraph(g *vault.Graph) {
 	m.rebuild(prev)
 }
 
+// SetGraphReseed replaces the graph and lays it out fresh (no position
+// reuse), so the new node set settles cleanly around its base centers rather
+// than drifting in from stale positions. Used on base switches, paired with
+// a reframe so the camera swivels to the newly shown base.
+func (m *Model) SetGraphReseed(g *vault.Graph) {
+	m.g = g
+	m.rebuild(nil)
+}
+
 // SetBases records the known base names ("" meaning the whole vault). The
 // shell wires this; SwitchBase cycles through the list.
 func (m *Model) SetBases(names []string) {
@@ -194,7 +200,7 @@ func (m *Model) tick() tea.Cmd {
 		return nil
 	}
 	m.ticking = true
-	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return tickMsg{} })
+	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return ui.GraphTickMsg{} })
 }
 
 // active reports whether animation should continue.
@@ -207,7 +213,7 @@ func (m *Model) active() bool {
 
 func (m *Model) Update(msg tea.Msg) (ui.View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tickMsg:
+	case ui.GraphTickMsg:
 		m.ticking = false
 		if m.layout != nil {
 			// A couple of iterations per frame keeps large graphs cheap
@@ -225,8 +231,23 @@ func (m *Model) Update(msg tea.Msg) (ui.View, tea.Cmd) {
 	case ui.RevealNoteMsg:
 		// The shell has already widened the base if needed; fly to the note.
 		return m.flyToPath(msg.Path)
+
+	case ui.ReframeGraphMsg:
+		// Swivel the camera to frame the current graph (after a base switch).
+		m.frameGraph()
+		return m, m.tick()
 	}
 	return m, nil
+}
+
+// frameGraph animates the camera to frame the whole current graph, keeping
+// the current orbit orientation (the same Frame motion fly-to search uses).
+func (m *Model) frameGraph() {
+	if m.cam == nil || m.layout == nil {
+		return
+	}
+	m.cam.Frame(m.layout.Centroid(), m.layout.BoundingRadius(), float64(m.w), float64(m.h))
+	m.camMoving = true
 }
 
 // flyToPath selects and frames the node with the given path, if it is in the
