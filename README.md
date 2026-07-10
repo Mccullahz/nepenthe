@@ -8,7 +8,9 @@ your notes rendered as a navigable **3D link graph** inside the CLI.
   drawn as continuous lines. Orbit, zoom, and fly through your vault with
   vim motions; depth is conveyed with glyph size, brightness, and titles
   that grow as nodes come closer (toggle titles with `L`). Press `/` to
-  fuzzy-search a note and fly the camera to it; **focus mode** (`f`)
+  fuzzy-search **notes and folders across every base** — pick a note and
+  the camera flies to it (widening the base if it lives elsewhere), pick a
+  folder to scope the graph to it. **Focus mode** (`f`)
   spotlights the selected node and its direct links — accented nodes and
   edges over a dimmed-but-visible rest — so the neighborhood stands out
   without hiding the surrounding structure.
@@ -90,7 +92,7 @@ Vault resolution order: positional arg / `-vault` flag → `$NEPENTHE_VAULT`
 | graph | `h j k l` | orbit |
 | graph | `K` / `J` (or `+`/`-`) | zoom in / out |
 | graph | `n` / `N` (or tab) | cycle node selection (auto-centers) |
-| graph | `/` | fuzzy-search notes, fly to one |
+| graph | `/` | fuzzy-search notes + folders (all bases) |
 | graph | `f` | toggle focus mode |
 | graph | `enter` | open selected note |
 | graph | `0` | reset camera |
@@ -111,6 +113,12 @@ Vault resolution order: positional arg / `-vault` flag → `$NEPENTHE_VAULT`
 
 `:q` closes the current note (returning to the note or graph beneath it);
 on the graph it quits the app.
+
+`:base` accepts **any folder path, at any depth** — `:base projects/web`
+scopes to that nested folder, not just the top-level bases that `b`
+cycles. Press **Tab** to complete the argument of `:base` (folders) and
+`:open` / `:delete` (note paths); repeated Tab cycles the matches,
+Shift+Tab reverses.
 
 ## Configuration
 

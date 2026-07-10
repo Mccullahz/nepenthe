@@ -505,3 +505,23 @@ func TestExportWholeVaultConflict(t *testing.T) {
 		t.Errorf("existing export target was overwritten: %q", content)
 	}
 }
+
+func TestDirsNestedAtAllDepths(t *testing.T) {
+	v := &Vault{Notes: map[string]*Note{
+		"index.md":            {},
+		"projects/a.md":       {},
+		"projects/web/api.md": {},
+		"projects/web/ui.md":  {},
+		"daily/mon.md":        {},
+	}}
+	got := v.Dirs()
+	want := []string{"daily", "projects", "projects/web"}
+	if len(got) != len(want) {
+		t.Fatalf("Dirs() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Dirs()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

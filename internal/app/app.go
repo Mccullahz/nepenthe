@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,11 @@ type App struct {
 	cmdMode bool
 	cmd     textinput.Model
 
+	// Tab-completion state for the ':' command line.
+	compMatches []string
+	compIdx     int
+	compLast    string // the value we last set, to detect user edits
+
 	status    string
 	statusSeq int
 
@@ -59,6 +65,7 @@ func New(cfg *config.Config, v *vault.Vault, initialStatus string) *App {
 	gv := graphview.New(cfg, v.Graph(""))
 	gv.SetBases(baseNames(v))
 	gv.SetActiveBase("")
+	gv.SetSearchIndex(buildSearchIndex(v))
 	return &App{
 		cfg:    cfg,
 		vault:  v,
@@ -94,7 +101,31 @@ func (a *App) refreshGraph() {
 		gv.SetGraph(a.vault.Graph(a.base))
 		gv.SetBases(baseNames(a.vault))
 		gv.SetActiveBase(a.base)
+		gv.SetSearchIndex(buildSearchIndex(a.vault))
 	}
+}
+
+// buildSearchIndex assembles the whole-vault "go to" index: every note (by
+// title and path) plus every folder (scopable as a base). Search over this
+// spans all bases, not just the one currently in view.
+func buildSearchIndex(v *vault.Vault) []ui.SearchEntry {
+	entries := make([]ui.SearchEntry, 0, len(v.Notes))
+	for p, n := range v.Notes {
+		entries = append(entries, ui.SearchEntry{Path: p, Title: n.Title, Base: firstSegment(p)})
+	}
+	for _, d := range v.Dirs() {
+		entries = append(entries, ui.SearchEntry{Path: d, Title: d, Base: firstSegment(d), IsFolder: true})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	return entries
+}
+
+// firstSegment returns the top-level folder of a vault-relative path.
+func firstSegment(p string) string {
+	if i := strings.IndexByte(p, '/'); i >= 0 {
+		return p[:i]
+	}
+	return ""
 }
 
 // reloadTopNote swaps a stale note viewer for a fresh one (used after
@@ -183,6 +214,16 @@ func (a *App) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 		a.refreshGraph()
 		return a, nil
 
+	case ui.RevealNoteMsg:
+		// Fuzzy search spans every base; if the picked note is outside the
+		// active base, widen to the whole vault so it's on the graph, then
+		// let the graph view (top) fly to it.
+		if a.base != "" && !strings.HasPrefix(m.Path, a.base+"/") {
+			a.base = ""
+			a.refreshGraph()
+		}
+		return a.routeToTop(m)
+
 	case ui.SwitchBaseMsg:
 		a.base = m.Base
 		a.refreshGraph()
@@ -215,14 +256,22 @@ func (a *App) handleKey(m tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.String() {
 		case "esc":
 			a.cmdMode = false
+			a.resetCompletion()
 			a.cmd.Blur()
 			return a, nil
 		case "enter":
 			line := strings.TrimSpace(a.cmd.Value())
 			a.cmdMode = false
+			a.resetCompletion()
 			a.cmd.Blur()
 			a.cmd.SetValue("")
 			return a, a.runCommand(line)
+		case "tab":
+			a.completeCommand(1)
+			return a, nil
+		case "shift+tab":
+			a.completeCommand(-1)
+			return a, nil
 		}
 		var cmd tea.Cmd
 		a.cmd, cmd = a.cmd.Update(m)
@@ -241,10 +290,78 @@ func (a *App) handleKey(m tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case km.Matches(m, keymap.Command):
 		a.cmdMode = true
+		a.resetCompletion()
 		a.cmd.SetValue("")
 		return a, a.cmd.Focus()
 	}
 	return a.routeToTop(m)
+}
+
+func (a *App) resetCompletion() {
+	a.compMatches = nil
+	a.compIdx = 0
+	a.compLast = ""
+}
+
+// completeCommand tab-completes the argument of ":base <folder>" and
+// ":open <note>". The first tab fills in the first match for the typed
+// prefix; further tabs cycle through the matches (shift+tab reverses).
+func (a *App) completeCommand(dir int) {
+	val := a.cmd.Value()
+	sp := strings.IndexByte(val, ' ')
+	if sp < 0 {
+		return // need "cmd <arg>"
+	}
+	cmd, arg := val[:sp], val[sp+1:]
+
+	var cands []string
+	switch cmd {
+	case "base":
+		cands = a.vault.Dirs()
+	case "open", "delete":
+		cands = notePaths(a.vault)
+	default:
+		return
+	}
+
+	if val != a.compLast || len(a.compMatches) == 0 {
+		// Fresh completion: recompute from the typed prefix.
+		a.compMatches = prefixMatches(arg, cands)
+		a.compIdx = 0
+	} else {
+		n := len(a.compMatches)
+		a.compIdx = ((a.compIdx+dir)%n + n) % n
+	}
+	if len(a.compMatches) == 0 {
+		return
+	}
+	newVal := cmd + " " + a.compMatches[a.compIdx]
+	a.cmd.SetValue(newVal)
+	a.cmd.CursorEnd()
+	a.compLast = newVal
+}
+
+// prefixMatches returns candidates that start with prefix (case-insensitive),
+// preserving the candidates' order.
+func prefixMatches(prefix string, cands []string) []string {
+	lp := strings.ToLower(prefix)
+	var out []string
+	for _, c := range cands {
+		if strings.HasPrefix(strings.ToLower(c), lp) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// notePaths returns every note path in the vault, sorted.
+func notePaths(v *vault.Vault) []string {
+	ps := make([]string, 0, len(v.Notes))
+	for p := range v.Notes {
+		ps = append(ps, p)
+	}
+	sort.Strings(ps)
+	return ps
 }
 
 func (a *App) runCommand(line string) tea.Cmd {

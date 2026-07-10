@@ -43,12 +43,15 @@ type Model struct {
 	showLabels bool
 	focus      bool
 
-	// Fly-to search overlay: when searching, keystrokes filter node titles
-	// and enter flies the camera to the chosen node.
-	searching bool
-	search    textinput.Model
-	matches   []int // node indices matching the query, best first
-	matchSel  int   // highlighted row in matches
+	// Fly-to search overlay: when searching, keystrokes filter the search
+	// index and enter flies to the chosen note (or scopes to a folder).
+	searching  bool
+	search     textinput.Model
+	index      []ui.SearchEntry // whole-vault index supplied by the shell
+	indexSet   bool
+	searchPool []ui.SearchEntry // entries being searched this session
+	matches    []int            // indices into searchPool, best first
+	matchSel   int              // highlighted row in matches
 
 	w, h int
 
@@ -70,7 +73,7 @@ type Model struct {
 func New(cfg *config.Config, g *vault.Graph) *Model {
 	ti := textinput.New()
 	ti.Prompt = ""
-	ti.Placeholder = "note title…"
+	ti.Placeholder = "note or folder…"
 	m := &Model{
 		cfg:        cfg,
 		g:          g,
@@ -150,6 +153,27 @@ func (m *Model) SetBases(names []string) {
 // from the right place.
 func (m *Model) SetActiveBase(name string) { m.activeBase = name }
 
+// SetSearchIndex supplies the whole-vault "go to" index (all notes and
+// folders) so fuzzy search spans every base, not just the one in view.
+func (m *Model) SetSearchIndex(entries []ui.SearchEntry) {
+	m.index = entries
+	m.indexSet = true
+}
+
+// searchEntries is what a fresh search ranks over: the shell-supplied
+// whole-vault index if present, else the notes in the current graph (so the
+// view still searches usefully on its own).
+func (m *Model) searchEntries() []ui.SearchEntry {
+	if m.indexSet {
+		return m.index
+	}
+	entries := make([]ui.SearchEntry, len(m.g.Nodes))
+	for i, n := range m.g.Nodes {
+		entries[i] = ui.SearchEntry{Path: n.Path, Title: n.Title, Base: n.Base}
+	}
+	return entries
+}
+
 func (m *Model) Init() tea.Cmd { return m.tick() }
 
 func (m *Model) SetSize(w, h int) {
@@ -194,6 +218,22 @@ func (m *Model) Update(msg tea.Msg) (ui.View, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case ui.RevealNoteMsg:
+		// The shell has already widened the base if needed; fly to the note.
+		return m.flyToPath(msg.Path)
+	}
+	return m, nil
+}
+
+// flyToPath selects and frames the node with the given path, if it is in the
+// current graph, restarting the animation loop.
+func (m *Model) flyToPath(path string) (ui.View, tea.Cmd) {
+	for i, n := range m.g.Nodes {
+		if n.Path == path {
+			m.flyTo(i)
+			return m, m.tick()
+		}
 	}
 	return m, nil
 }
@@ -289,11 +329,13 @@ func (m *Model) cycleSelection(dir int) {
 	m.cam.LookAt(m.layout.Positions()[m.sel])
 }
 
-// openSearch enters the fly-to search overlay.
+// openSearch enters the fly-to search overlay, snapshotting the pool of
+// entries (whole vault) to rank against.
 func (m *Model) openSearch() tea.Cmd {
 	m.searching = true
 	m.search.SetValue("")
 	m.matchSel = 0
+	m.searchPool = m.searchEntries()
 	m.updateMatches()
 	return m.search.Focus()
 }
@@ -311,10 +353,14 @@ func (m *Model) handleSearchKey(key tea.KeyMsg) (ui.View, tea.Cmd) {
 		return m, nil
 	case "enter":
 		if len(m.matches) > 0 {
-			id := m.matches[m.matchSel]
+			e := m.searchPool[m.matches[m.matchSel]]
 			m.closeSearch()
-			m.flyTo(id)
-			return m, m.tick()
+			if e.IsFolder {
+				// Scope the graph to the chosen folder (any depth).
+				return m, func() tea.Msg { return ui.SwitchBaseMsg{Base: e.Path} }
+			}
+			// Let the shell widen the base if needed, then fly to the note.
+			return m, func() tea.Msg { return ui.RevealNoteMsg{Path: e.Path} }
 		}
 		m.closeSearch()
 		return m, nil
@@ -335,15 +381,16 @@ func (m *Model) handleSearchKey(key tea.KeyMsg) (ui.View, tea.Cmd) {
 	return m, cmd
 }
 
-// updateMatches recomputes the ranked match list for the current query.
+// updateMatches recomputes the ranked match list for the current query over
+// the whole-vault search pool.
 func (m *Model) updateMatches() {
 	q := m.search.Value()
 	type scored struct {
 		id, score int
 	}
 	var hits []scored
-	for i, n := range m.g.Nodes {
-		if s, ok := fuzzyScore(q, n.Title); ok {
+	for i, e := range m.searchPool {
+		if s, ok := entryScore(q, e); ok {
 			hits = append(hits, scored{i, s})
 		}
 	}
@@ -351,7 +398,7 @@ func (m *Model) updateMatches() {
 		if hits[a].score != hits[b].score {
 			return hits[a].score > hits[b].score
 		}
-		return m.g.Nodes[hits[a].id].Title < m.g.Nodes[hits[b].id].Title
+		return m.searchPool[hits[a].id].Title < m.searchPool[hits[b].id].Title
 	})
 	m.matches = m.matches[:0]
 	for _, h := range hits {
@@ -359,6 +406,30 @@ func (m *Model) updateMatches() {
 	}
 	if m.matchSel >= len(m.matches) {
 		m.matchSel = 0
+	}
+}
+
+// entryScore ranks a search entry against the query. Notes match on title or
+// (at a small penalty) their path, so "web" surfaces both a projects/web
+// folder and the notes inside it; folders match on their path.
+func entryScore(q string, e ui.SearchEntry) (int, bool) {
+	if e.IsFolder {
+		return fuzzyScore(q, e.Path)
+	}
+	ts, tok := fuzzyScore(q, e.Title)
+	ps, pok := fuzzyScore(q, e.Path)
+	switch {
+	case tok && pok:
+		if ts >= ps-200 {
+			return ts, true
+		}
+		return ps - 200, true
+	case tok:
+		return ts, true
+	case pok:
+		return ps - 200, true
+	default:
+		return 0, false
 	}
 }
 
@@ -489,7 +560,7 @@ func (m *Model) overlaySearch(base string) string {
 
 	panel := []string{m.padLine(accent.Render("  /") + m.search.View())}
 	if len(m.matches) == 0 {
-		panel = append(panel, m.padLine(dim.Render("    no matching notes")))
+		panel = append(panel, m.padLine(dim.Render("    no matching notes or folders")))
 	} else {
 		const limit = 7
 		start := 0
@@ -497,15 +568,20 @@ func (m *Model) overlaySearch(base string) string {
 			start = m.matchSel - limit + 1
 		}
 		for i := start; i < len(m.matches) && i < start+limit; i++ {
-			n := m.g.Nodes[m.matches[i]]
-			suffix := ""
-			if n.Base != "" {
-				suffix = "   " + n.Base
+			e := m.searchPool[m.matches[i]]
+			var text string
+			if e.IsFolder {
+				text = e.Path + "/   base" // scoping target
+			} else {
+				text = e.Title
+				if e.Base != "" {
+					text += "   " + e.Base
+				}
 			}
 			if i == m.matchSel {
-				panel = append(panel, m.padLine(sel.Render("  › "+n.Title+suffix)))
+				panel = append(panel, m.padLine(sel.Render("  › "+text)))
 			} else {
-				panel = append(panel, m.padLine(dim.Render("    "+n.Title+suffix)))
+				panel = append(panel, m.padLine(dim.Render("    "+text)))
 			}
 		}
 	}

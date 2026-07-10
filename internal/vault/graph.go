@@ -70,6 +70,29 @@ func inBase(p, base string) bool {
 	return base == "" || strings.HasPrefix(p, base+"/")
 }
 
+// Dirs returns every directory that contains notes, at any depth,
+// vault-relative and sorted. Unlike Bases (top-level only), this includes
+// nested folders, for `:base <path>` scoping and command completion.
+func (v *Vault) Dirs() []string {
+	set := make(map[string]struct{})
+	for p := range v.Notes {
+		for {
+			i := strings.LastIndexByte(p, '/')
+			if i < 0 {
+				break
+			}
+			p = p[:i]
+			set[p] = struct{}{}
+		}
+	}
+	dirs := make([]string, 0, len(set))
+	for d := range set {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
 // topLevelDir returns the first path segment of a vault-relative path,
 // or "" if the note is at the vault root.
 func topLevelDir(p string) string {

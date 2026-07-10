@@ -238,16 +238,64 @@ func TestSearchRanksAndFlies(t *testing.T) {
 	for _, r := range "gam" {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if len(m.matches) == 0 || m.g.Nodes[m.matches[0]].Title != "Gamma" {
+	if len(m.matches) == 0 || m.searchPool[m.matches[0]].Title != "Gamma" {
 		t.Fatalf("top match = %v, want Gamma", m.matches)
 	}
-	// Enter flies to it: selection becomes Gamma and search closes.
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Enter emits a RevealNoteMsg for the note (the shell routes it back so
+	// the base can widen first); search closes.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.searching {
 		t.Errorf("search should close on enter")
 	}
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+	reveal, ok := cmd().(ui.RevealNoteMsg)
+	if !ok || reveal.Path != "c.md" {
+		t.Fatalf("got %#v, want RevealNoteMsg{Path: c.md}", cmd())
+	}
+	// Delivering it back flies to Gamma.
+	m.Update(reveal)
 	if m.g.Nodes[m.sel].Title != "Gamma" {
 		t.Errorf("selection = %q, want Gamma", m.g.Nodes[m.sel].Title)
+	}
+}
+
+func TestSearchFolderScopesBase(t *testing.T) {
+	m := newModel(80, 24)
+	// Supply a whole-vault index with a folder entry.
+	m.SetSearchIndex([]ui.SearchEntry{
+		{Path: "projects", Title: "projects", IsFolder: true},
+		{Path: "projects/web/api.md", Title: "API", Base: "projects"},
+	})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	for _, r := range "projects" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	// The folder should rank first; enter scopes to it via SwitchBaseMsg.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter produced no command")
+	}
+	sb, ok := cmd().(ui.SwitchBaseMsg)
+	if !ok || sb.Base != "projects" {
+		t.Fatalf("got %#v, want SwitchBaseMsg{Base: projects}", cmd())
+	}
+}
+
+func TestSearchSpansSuppliedIndex(t *testing.T) {
+	// A note absent from the current graph but present in the index is
+	// still findable (search spans all bases, not just the view).
+	m := newModel(80, 24)
+	m.SetSearchIndex([]ui.SearchEntry{
+		{Path: "daily/mon.md", Title: "Monday Standup", Base: "daily"},
+	})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	for _, r := range "standup" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if len(m.matches) != 1 || m.searchPool[m.matches[0]].Path != "daily/mon.md" {
+		t.Fatalf("expected to find daily/mon.md by title across bases, got %v", m.matches)
 	}
 }
 
